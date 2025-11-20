@@ -1,96 +1,160 @@
-<center>
+# 📄 Resume NLP Parser using Streamlit & Python
 
-# Resume Parser Using NLP
+> **AI-powered Resume Parsing System** that extracts candidate information from PDF resumes using NLP, evaluates resume quality, and suggests improvements based on desired job roles.
 
-</center>
+---
 
-## Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Technologies Used](#technologies-used)
-- [How to Run the Application](#how-to-run-the-application)
-- [Functionalities](#functionalities)
-  - [User](#user)
-  - [Recruiters](#recruiters)
-  - [Feedback](#feedback)
-  - [Admin](#admin)
-- [Future Enhancements](#future-enhancements)
-- [Team](#team)
+## 🚀 Features
 
-## Overview
+✔️ Upload PDF resume in UI
+✔️ Extracts:
 
-The **Resume NLP Parser** revolutionizes the recruitment process by employing sophisticated Natural Language Processing (NLP) techniques. This tool efficiently extracts, analyzes, and visualizes data from resumes, enabling data-driven decision-making in hiring. Tailored for both candidates and recruiters, it enhances the application experience by parsing resumes comprehensively and offering powerful insights.
+* 👤 **Name**
+* 📧 Email
+* 📱 Phone Number
+* 🎓 Education
+* 🧠 Skills
+* 💼 Experience Level
+* 📊 Resume Score (/100)
 
-## Key Features
+✔️ Suggests missing skills based on job title
+✔️ Saves uploaded resumes to SQLite database
+✔️ Admin panel to view feedback & stored resumes
+✔️ Recruiter mode for resume evaluation
 
-- **Comprehensive Resume Parsing**: Extracts detailed information including contact details, skills, work experience, and educational background from resumes in PDF formats.
+---
 
-- **Advanced NLP Analysis**: Utilizes leading-edge NLP libraries such as NLTK and spaCy to delve into resume text, identifying keywords, phrases, and patterns to evaluate candidates' qualifications comprehensively.
+## 🏗 Project Architecture
 
-- **Intuitive Data Visualization**: Presents parsed data through interactive visualizations, empowering recruiters with efficient insights into applicants' profiles.
+```
+Resume-NLP-Parser/
+│
+├── main.py                         # Application entry point
+│
+├── modules/
+│   ├── users.py                    # User side parsing interface
+│   ├── recruiters.py               # Recruiter evaluation UI
+│   └── admin.py                   # Admin dashboard
+│
+├── resume_parser.py                # Core NLP logic
+│
+├── data/
+│   ├── newSkills.csv               # Skills dictionary
+│   ├── feedback_data.csv           # Admin feedback storage
+│   └── user_pdfs.db                # SQLite DB (resume storage)
+│
+├── venv/                           # Virtual env
+└── requirements.txt                # Dependencies
+```
 
-- **Robust Search and Filtering**: Offers powerful search and filtering functionalities, enabling swift access to specific candidate information.
+---
 
-## Technologies Used
+## 🧠 Technologies Used
 
-The project leverages the following technologies and tools:
+| Domain        | Tools              |
+| ------------- | ------------------ |
+| NLP           | spaCy, NLTK, Regex |
+| UI            | Streamlit          |
+| PDF Parsing   | PyMuPDF (fitz)     |
+| Storage       | SQLite             |
+| Data Handling | pandas             |
+| Language      | Python             |
 
-- **Python**: Primary programming language for NLP, data analysis, and backend functionalities.
-- **NLP Libraries**: Utilizes NLTK and spaCy for text analysis, named entity recognition (NER), and text parsing.
-- **Web Interface**: Employs Streamlit to create a user-friendly web-based interface for seamless user interaction.
-- **Data Visualization**: Utilizes Matplotlib and Plotly for generating informative and interactive visualizations.
-- **Database Management**: Utilizes SQLite for efficiently managing and querying resume data.
-- **Model Training**: Incorporates spaCy's NER pipeline for training models on customized data for skill extraction.
+---
 
-## How to Run the Application
+## 🔍 How NLP Is Used
 
-To run the Resume NLP Parser:
+| NLP Task             | Implementation                       |
+| -------------------- | ------------------------------------ |
+| Text extraction      | PyMuPDF                              |
+| Tokenization         | NLTK                                 |
+| Name Extraction      | spaCy NER                            |
+| Skill Extraction     | Keyword matching + NLP preprocessing |
+| Experience Detection | Regex + heuristics                   |
+| Education Parsing    | Pattern matching                     |
+| Resume Score         | Rule-based evaluation                |
 
-1. Clone this repository to your local machine and ``cd`` into the project directory.
-    ``` bash
-    git@github.com:Deep4GB/Resume-NLP-Parser.git
-    cd Resume-NLP-Parser
-    ```
-2. Set up a Python environment with necessary dependencies listed in `requirements.txt`.
-    ``` bash
-    pip install -r requirements.txt
-    ```
-3. Run the application using Streamlit:
-    ```bash
-    streamlit run main.py
-    ```
-4. Upload resumes and explore the parsed data using the application's functionalities.
+---
 
-## Functionalities
+## ⚙️ Setup Instructions
 
-### User
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/Resume-NLP-Parser.git
+cd Resume-NLP-Parser
 
-The User section allows individuals to upload their resumes. The system then extracts and displays parsed information, showcasing extracted details such as skills, work experience, education, and contact information.
+# Create Virtual Environment
+python -m venv venv
+venv\Scripts\activate     # On Windows
 
-### Recruiters
+# Install dependencies
+pip install -r requirements.txt
 
-Recruiters can upload multiple resumes and specify desired skills. The system performs skill-based searching across the resumes, presenting the findings in a structured format for better evaluation.
+# Download NLP model
+python -m spacy download en_core_web_sm
 
-### Feedback
+# Run the application
+streamlit run main.py
+```
 
-This section enables users to provide feedback, suggestions, or improvements for the system's enhancement. Users can share their thoughts on improving parsing accuracy, user interface, or additional functionalities.
+---
 
-### Admin
+## 📊 Resume Score Calculation (Current Logic)
 
-Admins have privileged access, requiring authentication to access this section. They can review uploaded resumes, manage feedback received from users, and download uploaded resumes for further analysis or archiving.
+| Section      | Weight  |
+| ------------ | ------- |
+| Name         | 10      |
+| Email        | 10      |
+| Phone Number | 10      |
+| Education    | 20      |
+| Skills       | 30      |
+| Experience   | 20      |
+| **Total**    | **100** |
 
-## Future Enhancements
+➡ Score based on **information completeness**, not content quality.
 
-In the pipeline for this project are several enhancements:
+---
 
-- **Machine Learning Integration**: Integrate machine learning algorithms to enhance resume analysis and categorization.
-- **Customization Features**: Offer customization options for tailoring parsing algorithms to specific job roles or industries.
-- **Database Integration and Management**: Implement a more robust database system for long-term storage and efficient data retrieval.
+## 🚀 Future Improvements
 
-## Team
+* ML-based resume quality prediction
+* Job-role based scoring using NLP embeddings (BERT/SentenceTransformer)
+* Add project & certification evaluation
+* ATS optimization score
+* Resume formatting and grammar quality detection
 
-- **Darsh Patel**: [GitHub Profile](https://github.com/darsh8692)
-- **Dev Patel**: [GitHub Profile](https://github.com/Devv64bit)
-- **Deep Patel**: [GitHub Profile](https://github.com/Deep4GB)
-- **Dravya Patel**: [GitHub Profile](https://github.com/dravyaaa)
+---
 
+## 🔐 Admin Panel
+
+* Views uploaded resumes
+* Reads feedback from `feedback_data.csv`
+* Supports malformed row handling
+
+---
+
+## 🎯 Project Summary
+
+> “This project converts unstructured resume PDFs into structured insights using classical NLP techniques and rule-based extraction. It helps recruiters evaluate resumes faster and enables candidates to improve their resumes based on job-relevant suggestions.”
+
+---
+
+## 🟢 License
+
+MIT License
+
+---
+
+## ⭐ Contribution
+
+Pull requests are welcome!
+If you'd like to enhance resume scoring logic or add deep-learning based NLP, feel free to open an issue 🚀
+
+---
+
+Would you like:
+📌 A **project abstract (150 words)** for report submission?
+📌 A **diagram / architecture image** for viva/presentation?
+📌 Or a **Future Scope slide content**?
+
+Just say **"give abstract"** or **"give diagram"** 💡
