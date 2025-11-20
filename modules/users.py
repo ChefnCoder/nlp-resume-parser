@@ -1,9 +1,17 @@
 import streamlit as st
 import sqlite3
-from resume_parser import extract_resume_info_from_pdf, extract_contact_number_from_resume, extract_education_from_resume, \
-    extract_experience, suggest_skills_for_job, show_colored_skills, calculate_resume_score, extract_resume_info
+from resume_parser import (
+    extract_resume_info_from_pdf, 
+    extract_contact_number_from_resume, 
+    extract_education_from_resume, 
+    extract_experience, 
+    suggest_skills_for_job, 
+    show_colored_skills, 
+    calculate_resume_score, 
+    extract_resume_info
+)
 
-# Function to create a table for PDFs in SQLite database if it doesn't exist
+# ============================== DATABASE SETUP ==============================
 def create_table():
     conn = sqlite3.connect('data/user_pdfs.db')
     cursor = conn.cursor()
@@ -17,7 +25,6 @@ def create_table():
     conn.commit()
     conn.close()
 
-# Function to insert PDF into the SQLite database
 def insert_pdf(name, data):
     conn = sqlite3.connect('data/user_pdfs.db')
     cursor = conn.cursor()
@@ -25,72 +32,122 @@ def insert_pdf(name, data):
     conn.commit()
     conn.close()
 
-def process_user_mode():
-    create_table()  # Create table if it doesn't exist
 
-    st.title("Resume Parser using NLP")
-    uploaded_file = st.file_uploader("Upload a PDF resume", type="pdf")
+# ============================== MAIN APP ====================================
+def process_user_mode():
+    create_table()  # Ensure table exists
+
+    # App title with gradient
+    st.markdown(
+        """
+        <h1 style="text-align:center; color:#f63366; font-size:40px;">
+        📄 AI-Powered Resume Parser <span style="color:#6366f1;">✨</span>
+        </h1>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown('<hr style="border: 2px solid #6366f1;">', unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader("📤 **Upload your Resume (PDF format)**", type="pdf")
 
     if uploaded_file:
-        st.write("File uploaded successfully!")
+        st.success("✅ File uploaded successfully!")
 
         pdf_name = uploaded_file.name
         pdf_data = uploaded_file.getvalue()
-
-        # Insert the uploaded PDF into the database
         insert_pdf(pdf_name, pdf_data)
 
+        # Extract resume data
         pdf_text = extract_resume_info_from_pdf(uploaded_file)
         resume_info = extract_resume_info(pdf_text)
 
         st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Extracted Information:")
-        st.write(f"First Name: {resume_info['first_name']}")
-        st.write(f"Last Name: {resume_info['last_name']}")
-        st.write(f"Email: {resume_info['email']}")
+        st.subheader("🧾 Extracted Information")
 
-        # Fix the function call for extracting the phone number
-        contact_number = extract_contact_number_from_resume(pdf_text)
-        st.write(f"Phone Number:  +{contact_number}")
-        
-        st.write(f"Degree/Major: {resume_info['degree_major']}")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**👤 First Name:** {resume_info['first_name']}")
+            st.write(f"**📧 Email:** {resume_info['email']}")
+            contact_number = extract_contact_number_from_resume(pdf_text)
+            st.write(f"**📞 Phone:** +{contact_number}")
+        with col2:
+            st.write(f"**🧑‍💼 Last Name:** {resume_info['last_name']}")
+            st.write(f"**🎓 Degree/Major:** {resume_info['degree_major']}")
 
+        # ================= EDUCATION =================
         st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Education:")
+        st.subheader("🏫 Education Details")
+
         education_info = extract_education_from_resume(pdf_text)
-        st.write(', '.join(education_info) if education_info else "No education information found")
+        if education_info:
+            st.markdown(
+                "".join(f"<li style='color:#6366f1;'>{edu}</li>" for edu in education_info),
+                unsafe_allow_html=True
+            )
+        else:
+            st.warning("⚠️ No education information found.")
 
+        # ================= SKILLS =================
         st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Skills:")
+        st.subheader("💡 Key Skills Identified")
         show_colored_skills(resume_info['skills'])
 
+        # ================= RESUME SCORE =================
         st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Experience:")
-        experience_info = extract_experience(pdf_text)
-        st.write(f"Level of Experience: {experience_info['level_of_experience']}")
-        st.write(f"Suggested Position: {experience_info['suggested_position']}")
+        st.subheader("📊 Resume Quality Score")
 
-        st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Resume Score:")
         resume_score = calculate_resume_score(resume_info)
-        st.write(f"**Resume Score:** {resume_score}/100")
+        st.markdown(f"**⭐ Resume Score:** {resume_score}/100")
 
-        # Displaying a custom-styled progress bar with gradient colors
+        # Modern Gradient Progress Bar
         percentage = resume_score
-        percentage_str = str(percentage)
-        bar = (
-            f'<div style="background: linear-gradient(90deg, #f63366 {percentage_str}%, #d6d6d6 {percentage_str}%);'
-            'height: 30px; border-radius: 5px; display: flex; align-items: center;">'
-            f'<div style="color: white; text-align: center; width: 100%;">{percentage}%</div>'
-            '</div>'
-        )
-        st.markdown(bar, unsafe_allow_html=True)
+        color = "#4ade80" if percentage >= 75 else "#facc15" if percentage >= 50 else "#f87171"
+        bar_html = f"""
+        <div style="background: #e5e7eb; border-radius: 10px; height: 30px;">
+            <div style="
+                width: {percentage}%;
+                height: 30px;
+                background: linear-gradient(90deg, {color}, #6366f1);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;">
+                {percentage}%
+            </div>
+        </div>
+        """
+        st.markdown(bar_html, unsafe_allow_html=True)
 
+        # ================= SUGGESTED SKILLS =================
         st.markdown('<hr>', unsafe_allow_html=True)
-        st.header("Suggested Skills for the Desired Job:")
-        desired_job = st.text_input("Enter the job you are looking for:")
-        suggested_skills = suggest_skills_for_job(desired_job)
-        st.write(suggested_skills)
+        st.subheader("🎯 AI-Suggested Skills for Desired Job Role")
 
+        desired_job = st.text_input("💼 Enter your target job role (e.g., Backend Developer, Data Scientist):")
+        if desired_job:
+            suggested_skills = suggest_skills_for_job(desired_job)
+            if suggested_skills:
+                st.success(f"🌟 **Recommended Skills for {desired_job}:**")
+                st.markdown(
+                    "".join(f"<li style='color:#22c55e;'>{skill}</li>" for skill in suggested_skills),
+                    unsafe_allow_html=True
+                )
+            else:
+                st.warning("⚠️ No suggested skills found for that role. Try another title.")
+
+        # ================= FOOTER =================
+        st.markdown('<hr style="border: 1px solid #ddd;">', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <p style="text-align:center; color:#6b7280;">
+            🚀 Built with ❤️ using <b>Streamlit</b> and <b>spaCy NLP</b>
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+# ============================== ENTRY POINT ==============================
 if __name__ == '__main__':
     process_user_mode()

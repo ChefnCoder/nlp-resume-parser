@@ -6,235 +6,237 @@ import spacy
 import csv
 import nltk
 
-# Additional libraries
-nltk.download('punkt')
-
-# Load the spaCy model for English
+# ---------------------------------- Setup ----------------------------------
+nltk.download('punkt', quiet=True)
 nlp = spacy.load('en_core_web_sm')
 
+# ------------------------------ Helper Functions ---------------------------
 def load_keywords(file_path):
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding='utf-8') as file:
         reader = csv.reader(file)
-        return set(row[0] for row in reader)
+        return set(row[0].strip() for row in reader if row)
 
-# ----------------------------------Extract Name----------------------------------
+# ============================== NAME EXTRACTION =============================
+BLACKLIST_TITLE_WORDS = {
+    "intern", "internship", "trainee", "vocational", "project", "based",
+    "engineer", "developer", "student", "fresher", "manager", "consultant",
+    "associate", "analyst", "software", "graduate", "director", "founder",
+    "cofounder", "co-founder", "company", "inc", "llc", "school", "college",
+    "department", "team", "lead", "senior", "junior"
+}
+
+def _clean_tokens(s):
+    return [t for t in re.sub(r"[^A-Za-z\s]", " ", s).split() if t]
+
+def _looks_like_name(tokens):
+    if not (2 <= len(tokens) <= 4):
+        return False
+    if any(tok.lower() in BLACKLIST_TITLE_WORDS for tok in tokens):
+        return False
+    upper_tokens = sum(1 for t in tokens if t[0].isupper() or t.isupper())
+    return (upper_tokens / len(tokens)) >= 0.6
+
 def extract_name(doc):
+    """
+    Extract likely first and last name from the top of the resume.
+    """
+    text = doc.text.strip()
+    email_m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
+    phone_m = re.search(r"(\+?\d[\d\s\-\(\)]{6,}\d)", text)
+    header_limit = min(email_m.start() if email_m else len(text),
+                       phone_m.start() if phone_m else len(text),
+                       500)
+
+    # Check PERSON entities first (before header limit)
+    candidates = []
     for ent in doc.ents:
-        if ent.label_ == 'PERSON':
-            names = ent.text.split()
-            if len(names) >= 2 and names[0].istitle() and names[1].istitle():
-                return names[0], ' '.join(names[1:])
+        if ent.label_ == "PERSON" and ent.start_char < header_limit:
+            tokens = _clean_tokens(ent.text)
+            if _looks_like_name(tokens):
+                candidates.append((ent.start_char, " ".join(tokens)))
+
+    if candidates:
+        candidates.sort(key=lambda x: (x[0], -len(x[1])))
+        name = candidates[0][1].strip()
+        parts = name.split()
+        return parts[0], " ".join(parts[1:]) if len(parts) > 1 else ""
+
+    # Fallback: top few lines
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for ln in lines[:6]:
+        tokens = _clean_tokens(ln)
+        if _looks_like_name(tokens):
+            return tokens[0], " ".join(tokens[1:])
+
+    # Fallback: derive from email prefix
+    if email_m:
+        prefix = email_m.group(0).split("@")[0]
+        parts = [p.capitalize() for p in re.split(r"[._\-]", prefix) if p]
+        if len(parts) >= 2:
+            return parts[0], " ".join(parts[1:])
+        return parts[0], ""
+
     return "", ""
-# --------------------------------------------------------------------------------
 
-# ----------------------------------Extract Email---------------------------------
+# ============================== EMAIL EXTRACTION ============================
 def extract_email(doc):
-    matcher = spacy.matcher.Matcher(nlp.vocab)
-    email_pattern = [{'LIKE_EMAIL': True}]
-    matcher.add('EMAIL', [email_pattern])
+    pattern = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+    match = re.search(pattern, doc.text)
+    return match.group() if match else ""
 
-    matches = matcher(doc)
-    for match_id, start, end in matches:
-        if match_id == nlp.vocab.strings['EMAIL']:
-            return doc[start:end].text
-    return ""
-# --------------------------------------------------------------------------------
-
-# ----------------------------------Extract Ph No---------------------------------
+# ============================== PHONE EXTRACTION ===========================
 def extract_contact_number_from_resume(doc):
-    contact_number = None
-    text = doc.text  # Extract text from SpaCy doc object
-    pattern = r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
+    text = doc.text
+    pattern = r"(\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}"
     match = re.search(pattern, text)
     if match:
-        contact_number = match.group()
-    return contact_number
-# --------------------------------------------------------------------------------
+        return re.sub(r"\D", "", match.group())
+    return ""
 
-# --------------------------------Extract Education-------------------------------
+# ============================= EDUCATION EXTRACTION ========================
 def extract_education_from_resume(doc):
-    universities = []
-
-    # Process the document with spaCy
-    doc = nlp(doc)
-
-    # Iterate through entities and check for organizations (universities)
+    universities = set()
     for entity in doc.ents:
-        if entity.label_ == "ORG" and ("university" in entity.text.lower() or "college" in entity.text.lower() or "institute" in entity.text.lower()):
-            universities.append(entity.text)
+        if entity.label_ == "ORG" and any(
+            kw in entity.text.lower() for kw in ["university", "college", "institute", "school"]
+        ):
+            universities.add(entity.text.strip())
+    return list(universities)
 
-    return universities
-# --------------------------------------------------------------------------------
-
-# ----------------------------------Extract Skills--------------------------------
+# =============================== SKILLS EXTRACTION =========================
 def csv_skills(doc):
     skills_keywords = load_keywords('data/newSkills.csv')
-    skills = set()
+    text = doc.text.lower()
+    return {kw for kw in skills_keywords if kw.lower() in text}
 
-    for keyword in skills_keywords:
-        if keyword.lower() in doc.text.lower():
-            skills.add(keyword)
-
-    return skills
-
-nlp_skills = spacy.load('TrainedModel/skills')  # Load the trained NER model for skills
+nlp_skills = spacy.load('TrainedModel/skills')
 
 def extract_skills_from_ner(doc):
-    non_skill_labels = {'DATE', 'TIME', 'PERCENT', 'MONEY', 'QUANTITY', 'ORDINAL', 'CARDINAL', 'EMAIL'}
-    
+    non_skill_labels = {'DATE', 'TIME', 'PERCENT', 'MONEY', 'QUANTITY', 'ORDINAL', 'CARDINAL', 'EMAIL', 'PLACE'}
     skills = set()
     for ent in nlp_skills(doc.text).ents:
-        if ent.label_ == 'SKILL':
-            # Check if the entity text is not in the non-skill labels set
-            if ent.label_ not in non_skill_labels and not ent.text.isdigit():
-                # Filter out non-alphabetic characters
-                skill_text = ''.join(filter(str.isalpha, ent.text))
-                if skill_text:
-                    skills.add(skill_text)
+        if ent.label_ == 'SKILL' and ent.label_ not in non_skill_labels:
+            skill = re.sub(r"[^A-Za-z+# ]", "", ent.text.strip())
+            if 2 <= len(skill) <= 40:
+                skills.add(skill)
     return skills
 
-def is_valid_skill(skill_text):
-    # Define criteria for valid skills (modify/add criteria as needed)
-    return len(skill_text) > 1 and not any(char.isdigit() for char in skill_text)
+def is_valid_skill(skill):
+    banned = {
+    # months
+    "may","june","july","august","september","october","november","december",
+    "january","february","march","april","jan","feb","mar","apr","aug","sep","oct","nov","dec",
+    # action verbs / resume noise
+    "led","supervised","managed","directed","coordinated","oversaw","executed","developed",
+    "designed","implemented","built","engineered","created","launched","mentored","constructed",
+    "enhanced","optimized","organized","analyzed","tested","documented","supported","collaborated",
+    "improved","communicated","achieved","presented","increased","deployed","configured",
+    # section titles or generic
+    "technical skills","other skills","education","experience","project","projects","summary",
+    "profile","school","college","university","secondary","higher secondary","details"
+    }
+    return len(skill) > 1 and not any(c.isdigit() for c in skill) and skill.lower() not in banned
 
 def extract_skills(doc):
-    skills_csv = csv_skills(doc)
-    skills_ner = extract_skills_from_ner(doc)
-    
-    filtered_skills_csv = {skill for skill in skills_csv if is_valid_skill(skill)}
-    filtered_skills_ner = {skill for skill in skills_ner if is_valid_skill(skill)}
-    
-    combined_skills = filtered_skills_csv.union(filtered_skills_ner)  # Combine filtered skills without duplicates
-    
-    return list(combined_skills)  # Return combined filtered skills as a list
+    csv_s = csv_skills(doc)
+    ner_s = extract_skills_from_ner(doc)
+    combined = {s for s in csv_s.union(ner_s) if is_valid_skill(s)}
+    return sorted(combined)
 
-# --------------------------------------------------------------------------------
-
-# ----------------------------------Extract Major---------------------------------
+# =============================== MAJOR EXTRACTION ==========================
 def extract_major(doc):
     major_keywords = load_keywords('data/majors.csv')
-
-    for keyword in major_keywords:
-        if keyword.lower() in doc.text.lower():
-            return keyword
-
+    for kw in major_keywords:
+        if kw.lower() in doc.text.lower():
+            return kw
     return ""
-# --------------------------------------------------------------------------------
 
-# --------------------------------Extract Experience-------------------------------
+# ============================= EXPERIENCE EXTRACTION =======================
 def extract_experience(doc):
-    verbs = [token.text for token in doc if token.pos_ == 'VERB']
+    verbs = [token.lemma_.lower() for token in doc if token.pos_ == 'VERB']
+    senior = {'lead', 'manage', 'direct', 'oversee', 'supervise'}
+    mid = {'develop', 'design', 'analyze', 'implement', 'execute'}
+    junior = {'assist', 'support', 'collaborate', 'participate'}
 
-    senior_keywords = ['lead', 'manage', 'direct', 'oversee', 'supervise', 'orchestrate', 'govern']
-    mid_senior_keywords = ['develop', 'design', 'analyze', 'implement', 'coordinate', 'execute', 'strategize']
-    mid_junior_keywords = ['assist', 'support', 'collaborate', 'participate', 'aid', 'facilitate', 'contribute']
-    
-    if any(keyword in verbs for keyword in senior_keywords):
-        level_of_experience = "Senior"
-    elif any(keyword in verbs for keyword in mid_senior_keywords):
-        level_of_experience = "Mid-Senior"
-    elif any(keyword in verbs for keyword in mid_junior_keywords):
-        level_of_experience = "Mid-Junior"
+    if any(v in verbs for v in senior):
+        level = "Senior"
+    elif any(v in verbs for v in mid):
+        level = "Mid-Senior"
+    elif any(v in verbs for v in junior):
+        level = "Mid-Junior"
     else:
-        level_of_experience = "Entry Level"
+        level = "Entry Level"
 
-    suggested_position = suggest_position(verbs)
+    return {'level_of_experience': level, 'suggested_position': suggest_position(verbs)}
 
-    return {
-        'level_of_experience': level_of_experience,
-        'suggested_position': suggested_position
-    }
-
-# --------------------------------------------------------------------------------
-
-
-# -----------------------------------Suggestions----------------------------------
+# ============================= POSITION SUGGESTION ========================
 def load_positions_keywords(file_path):
     positions_keywords = {}
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            position = row['position']
-            keywords = [keyword.lower()
-                        for keyword in row['keywords'].split(',')]
+            position = row['position'].strip()
+            keywords = [k.strip().lower() for k in row['keywords'].split(',')]
             positions_keywords[position] = keywords
     return positions_keywords
 
-
 def suggest_position(verbs):
-    positions_keywords = load_positions_keywords('data/position.csv')
-    verbs = [verb.lower() for verb in verbs]
-    for position, keywords in positions_keywords.items():
-        if any(keyword in verbs for keyword in keywords):
-            return position
-
+    verbs = [v.lower() for v in verbs]
+    positions = load_positions_keywords('data/position.csv')
+    for pos, keywords in positions.items():
+        if any(k in verbs for k in keywords):
+            return pos
     return "Position Not Identified"
 
-
+# ============================= PDF TEXT EXTRACTION ========================
 def extract_resume_info_from_pdf(uploaded_file):
-    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
     text = ""
-    for page_num in range(doc.page_count):
-        page = doc[page_num]
-        text += page.get_text()
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+        for page in doc:
+            text += page.get_text()
     return nlp(text)
 
-
+# ============================= DISPLAY UTILITIES ==========================
 def show_colored_skills(skills):
-    st.write(', '.join(skills))
-
+    st.markdown(", ".join(sorted(skills)))
 
 def calculate_resume_score(resume_info):
     score = 0
-    if resume_info['first_name'] and resume_info['last_name']:
+    if resume_info.get('first_name') and resume_info.get('last_name'):
         score += 25
-    if resume_info['email']:
+    if resume_info.get('email'):
         score += 25
-    if resume_info['degree_major']:
+    if resume_info.get('degree_major'):
         score += 25
-    if resume_info['skills']:
+    if resume_info.get('skills'):
         score += 25
     return score
 
-
+# ============================= MASTER PARSER ===============================
 def extract_resume_info(doc):
-    first_lines = '\n'.join(doc.text.splitlines()[:10])
     first_name, last_name = extract_name(doc)
     email = extract_email(doc)
     skills = extract_skills(doc)
     degree_major = extract_major(doc)
     experience = extract_experience(doc)
 
-    return {'first_name': first_name, 'last_name': last_name, 'email': email, 'degree_major': degree_major, 'skills': skills, 'experience': experience}
+    return {
+        'first_name': first_name,
+        'last_name': last_name,
+        'email': email,
+        'degree_major': degree_major,
+        'skills': skills,
+        'experience': experience
+    }
 
-
+# ============================= SKILL SUGGESTION ===========================
 def suggest_skills_for_job(desired_job):
     job_skills_mapping = {}
-    
-    with open('data/sugestedSkills.csv', newline='') as csvfile:
+    with open('data/sugestedSkills.csv', newline='', encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
+            if not row:
+                continue
             job_title = row[0].lower()
-            skills = row[1:]
-            job_skills_mapping[job_title] = skills
-    
-    desired_job_lower = desired_job.lower()
-    if desired_job_lower in job_skills_mapping:
-        suggested_skills = job_skills_mapping[desired_job_lower]
-        return suggested_skills
-    else:
-        return []
-
-
-'''
-def show_pdf(uploaded_file):
-    try:
-        with open(uploaded_file.name, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-    except AttributeError:
-        base64_pdf = base64.b64encode(uploaded_file.read()).decode('utf-8')
-
-    pdf_display = F'<iframe src="data:application/pdf;base64,{base64_pdf}" width="700" height="1000" type="application/pdf"></iframe>'
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
-'''
+            job_skills_mapping[job_title] = [s.strip() for s in row[1:] if s.strip()]
+    return job_skills_mapping.get(desired_job.lower(), [])
